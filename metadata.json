@@ -1,0 +1,6 @@
+{
+  "name": "ClayStudio AR",
+  "description": "Mesa de luz, superposición de fotos, realidad aumentada 3D, cámara lenta para detalles, timelapse, hitos de secado de arcilla y sincronización de proyectos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
