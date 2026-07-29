@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,8 +25,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
@@ -35,9 +38,13 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.Rotate90DegreesCcw
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.AlertDialog
@@ -72,9 +79,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -82,6 +92,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.ReferencePhotoEntity
@@ -98,12 +109,29 @@ import com.example.ui.theme.StudioDarkCard
 import com.example.ui.theme.StudioDarkSurface
 import com.example.ui.theme.TerracottaPrimary
 import com.example.ui.viewmodel.ProjectViewModel
+import com.example.util.rememberOrientationDegrees
+
+data class SpatialAnglePreset(
+    val label: String,
+    val degrees: Float,
+    val description: String
+)
+
+val CANONICAL_ANGLES = listOf(
+    SpatialAnglePreset("Frente (0°)", 0f, "Vista frontal directa"),
+    SpatialAnglePreset("3/4 Frontal (45°)", 45f, "Diagonal tres cuartos"),
+    SpatialAnglePreset("Perfil Izq (90°)", 90f, "Lado izquierdo 90°"),
+    SpatialAnglePreset("3/4 Trasero (135°)", 135f, "Diagonal trasera"),
+    SpatialAnglePreset("Atrás (180°)", 180f, "Espalda / Reverso 180°"),
+    SpatialAnglePreset("Perfil Der (270°)", 270f, "Lado derecho 270°")
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LightboxScreen(
     viewModel: ProjectViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToPrintableMarkers: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentProject by viewModel.currentProject.collectAsState()
@@ -118,9 +146,19 @@ fun LightboxScreen(
     var flipHorizontal by remember { mutableStateOf(false) }
     var gridType by remember { mutableStateOf(GridType.RULE_OF_THIRDS) }
 
+    // Spatial & Gyroscope Alignment Angle (0° to 360°)
+    var enableGyroTracking by remember { mutableStateOf(false) }
+    var manualAngleDegrees by remember { mutableFloatStateOf(0f) }
+    var showSpatialMarkers by remember { mutableStateOf(true) }
+    var showInstructionsDialog by remember { mutableStateOf(false) }
+
+    val sensorAzimuth = rememberOrientationDegrees(enabled = enableGyroTracking)
+
+    val activeAngle = if (enableGyroTracking) sensorAzimuth else manualAngleDegrees
+
     // Geometric 3D Guide overlay mode
     var enable3DGuideOverlay by remember { mutableStateOf(false) }
-    var guide3DType by remember { mutableStateOf(Guide3DType.HEAD_BUST) }
+    var guide3DType by remember { mutableStateOf(Guide3DType.SPHERE) }
 
     var lensFacing by remember { mutableIntStateOf(androidx.camera.core.CameraSelector.LENS_FACING_BACK) }
     var showControls by remember { mutableStateOf(true) }
@@ -134,6 +172,26 @@ fun LightboxScreen(
         viewModel.ensureDefaultProject {}
     }
 
+    // Auto-Select Photo matching active angle if gyro tracking or dial is used
+    LaunchedEffect(activeAngle, referencePhotos.size) {
+        if (referencePhotos.isNotEmpty()) {
+            val closest = referencePhotos.minByOrNull { photo ->
+                val photoAngle = when (photo.title.lowercase()) {
+                    "frente", "frontal" -> 0f
+                    "3/4 frontal", "3/4 izq" -> 45f
+                    "lado izquierdo", "perfil izq", "perfil" -> 90f
+                    "3/4 trasero" -> 135f
+                    "atrás", "espalda", "reverso" -> 180f
+                    "lado derecho", "perfil der" -> 270f
+                    else -> 0f
+                }
+                val diff = Math.abs(photoAngle - (activeAngle % 360f))
+                if (diff > 180f) 360f - diff else diff
+            }
+            closest?.let { viewModel.selectReferencePhoto(it) }
+        }
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -145,10 +203,11 @@ fun LightboxScreen(
 
     val currentMesh = remember(guide3DType) {
         when (guide3DType) {
-            Guide3DType.HEAD_BUST -> Mesh3D.createHeadBust()
             Guide3DType.SPHERE -> Mesh3D.createSphere()
+            Guide3DType.CUBE -> Mesh3D.createCube()
             Guide3DType.CYLINDER -> Mesh3D.createCylinder()
-            Guide3DType.ANIMAL_FORM -> Mesh3D.createAnimalBody()
+            Guide3DType.CONE -> Mesh3D.createCone()
+            Guide3DType.HEAD_BUST -> Mesh3D.createHeadBust()
             Guide3DType.TORSO -> Mesh3D.createCylinder(radius = 90f, height = 240f)
             Guide3DType.POT_VASE -> Mesh3D.createSphere(radius = 110f, rings = 10, segments = 16)
         }
@@ -165,7 +224,7 @@ fun LightboxScreen(
                             color = Color.White
                         )
                         Text(
-                            currentProject?.title ?: "Superposición y Referencias",
+                            "${currentProject?.title ?: "Escultura"} • ${activeAngle.toInt()}°",
                             fontSize = 12.sp,
                             color = ArNeonCyan
                         )
@@ -177,6 +236,12 @@ fun LightboxScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToPrintableMarkers, modifier = Modifier.testTag("btn_qr_printable")) {
+                        Icon(Icons.Default.QrCode2, contentDescription = "Marcadores y QR", tint = ArNeonCyan)
+                    }
+                    IconButton(onClick = { showInstructionsDialog = true }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Guía de Trabajo", tint = ArNeonGold)
+                    }
                     IconButton(
                         onClick = {
                             lensFacing = if (lensFacing == androidx.camera.core.CameraSelector.LENS_FACING_BACK)
@@ -184,7 +249,7 @@ fun LightboxScreen(
                             else androidx.camera.core.CameraSelector.LENS_FACING_BACK
                         }
                     ) {
-                        Icon(Icons.Default.Cameraswitch, contentDescription = "Cambiar Cámara", tint = ArNeonGold)
+                        Icon(Icons.Default.Cameraswitch, contentDescription = "Cambiar Cámara", tint = Color.White)
                     }
                     IconButton(
                         onClick = { showControls = !showControls }
@@ -290,7 +355,7 @@ fun LightboxScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Toca el botón + abajo para agregar una foto (Frente, Lado, Atrás)",
+                                "Toca el botón + abajo para agregar referencias (Frente, Perfil, Atrás)",
                                 color = Color.LightGray,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -298,6 +363,11 @@ fun LightboxScreen(
                         }
                     }
                 }
+            }
+
+            // Spatial Reference Markers Overlay (Circles for X, Triangles for Z, Center Reticle)
+            if (showSpatialMarkers) {
+                SpatialMarkersOverlay(activeAngle = activeAngle)
             }
 
             // Grid Guide Overlay Lines
@@ -314,10 +384,70 @@ fun LightboxScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(StudioDarkSurface.copy(alpha = 0.92f))
+                        .background(StudioDarkSurface.copy(alpha = 0.94f))
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // DIAL DE ÁNGULO Y SEGUIMIENTO GIROSCÓPICO
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Explore, contentDescription = null, tint = ArNeonGold, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Ángulo Espacial: ${activeAngle.toInt()}°",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Auto Giroscopio", fontSize = 11.sp, color = ArNeonCyan)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Switch(
+                                checked = enableGyroTracking,
+                                onCheckedChange = { enableGyroTracking = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
+                            )
+                        }
+                    }
+
+                    // Angle Presets (Frente 0°, 3/4 45°, Lado 90°, Atrás 180°, etc.)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(CANONICAL_ANGLES) { preset ->
+                            val isSel = Math.abs(preset.degrees - (activeAngle % 360f)) < 25f
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSel) TerracottaPrimary else StudioDarkCard,
+                                modifier = Modifier.clickable {
+                                    enableGyroTracking = false
+                                    manualAngleDegrees = preset.degrees
+                                }
+                            ) {
+                                Text(
+                                    preset.label,
+                                    fontSize = 11.sp,
+                                    color = if (isSel) Color.White else Color.LightGray,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Manual Angle Slider Dial
+                    if (!enableGyroTracking) {
+                        Slider(
+                            value = manualAngleDegrees,
+                            onValueChange = { manualAngleDegrees = it },
+                            valueRange = 0f..360f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     // QUICK ACCESS BAR FOR REFERENCE IMAGES (Frente, Lado, Atrás, etc.)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -325,7 +455,7 @@ fun LightboxScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            "Acceso Rápido a Referencias",
+                            "Vistas de Referencia",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = ArNeonGold
@@ -336,7 +466,7 @@ fun LightboxScreen(
                         ) {
                             Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = TerracottaPrimary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Agregar Vista", fontSize = 12.sp, color = TerracottaPrimary, fontWeight = FontWeight.Bold)
+                            Text("+ Cargar Vista", fontSize = 12.sp, color = TerracottaPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -400,10 +530,10 @@ fun LightboxScreen(
                         Icon(Icons.Default.Opacity, contentDescription = null, tint = ArNeonGold)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Transparencia: ${(opacity * 100).toInt()}%",
+                            "Opacidad: ${(opacity * 100).toInt()}%",
                             fontSize = 12.sp,
                             color = Color.White,
-                            modifier = Modifier.width(130.dp)
+                            modifier = Modifier.width(110.dp)
                         )
                         Slider(
                             value = opacity,
@@ -413,7 +543,7 @@ fun LightboxScreen(
                         )
                     }
 
-                    // 3D Geometric Overlay Toggle Bar
+                    // 3D Pure Geometric Primitives Selector Overlay
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -422,7 +552,7 @@ fun LightboxScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ViewInAr, contentDescription = null, tint = ArNeonCyan)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Guía 3D Geométrica Overlay", fontSize = 12.sp, color = Color.White)
+                            Text("Malla 3D Geométrica Primitiva", fontSize = 12.sp, color = Color.White)
                         }
                         Switch(
                             checked = enable3DGuideOverlay,
@@ -449,22 +579,6 @@ fun LightboxScreen(
                                 }
                             }
                         }
-                    }
-
-                    // Contour Trace Mode Toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Modo Calco (Filtro de Contornos)", fontSize = 12.sp, color = Color.White)
-                        }
-                        Switch(
-                            checked = isTraceMode,
-                            onCheckedChange = { isTraceMode = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
-                        )
                     }
 
                     // Transform Actions & REAL CAPTURE BUTTON
@@ -501,7 +615,7 @@ fun LightboxScreen(
                                     context = context,
                                     imageCapture = activeImageCapture,
                                     onPhotoCaptured = { savedUri ->
-                                        val activeViewLabel = selectedPhoto?.title ?: "Vista libre"
+                                        val activeViewLabel = selectedPhoto?.title ?: "Vista ${activeAngle.toInt()}°"
                                         viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = activeViewLabel)
                                         Toast.makeText(context, "📸 Captura guardada en Galería de Avances", Toast.LENGTH_SHORT).show()
                                     }
@@ -522,9 +636,91 @@ fun LightboxScreen(
         }
     }
 
-    // Reference View Naming Dialog (Frente, Lado, Atrás, Figura vs Plano)
+    // SPATIAL WORKSPACE INSTRUCTIONS DIALOG FOR ARTISTS
+    if (showInstructionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showInstructionsDialog = false },
+            containerColor = StudioDarkSurface,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = ArNeonGold)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Guía de Trabajo Referenciado (AR)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Para lograr la máxima precisión en modelado de arcilla o dibujo sin que la imagen se desplace al mover el móvil o la masa:",
+                        fontSize = 12.sp,
+                        color = Color.LightGray
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StudioDarkCard,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("1. Marcadores de Posición en la Mesa:", fontWeight = FontWeight.Bold, color = ArNeonCyan, fontSize = 12.sp)
+                            Text(
+                                "Dibuja o coloca 2 marcas simples en tu base o plato giratorio:\n• Círculo (⚪) para el Eje X (Frente 0°).\n• Triángulo (🔺) para el Eje Z (Perfil 90°).",
+                                fontSize = 11.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StudioDarkCard,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("2. Cargar 6 Caras / Ángulos Principales:", fontWeight = FontWeight.Bold, color = ArNeonGold, fontSize = 12.sp)
+                            Text(
+                                "Toma o sube fotos etiquetando cada vista: Frente (0°), 3/4 Frontal (45°), Lado Izq (90°), 3/4 Trasero (135°), Atrás (180°), Lado Der (270°).",
+                                fontSize = 11.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StudioDarkCard,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("3. Auto-Conmutación por Giroscopio o Rueda:", fontWeight = FontWeight.Bold, color = TerracottaPrimary, fontSize = 12.sp)
+                            Text(
+                                "Activa 'Auto Giroscopio' para que al mover el móvil alrededor de la escultura la referencia cambie automáticamente al ángulo correspondiente. Si el móvil está fijo, usa la Rueda de Ángulos (0°-360°).",
+                                fontSize = 11.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showInstructionsDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary)
+                ) {
+                    Text("Entendido")
+                }
+            }
+        )
+    }
+
+    // Reference View Naming Dialog (Frente, Lado, Atrás, etc.)
     if (showNameDialog && pendingUri != null) {
-        val presetViews = listOf("Frente", "Lado Izquierdo", "Lado Derecho", "Atrás", "Vista Superior", "Detalle")
+        val presetViews = listOf("Frente", "3/4 Frontal", "Lado Izquierdo", "3/4 Trasero", "Atrás", "Lado Derecho", "Vista Superior")
 
         AlertDialog(
             onDismissRequest = {
@@ -533,12 +729,12 @@ fun LightboxScreen(
             },
             containerColor = StudioDarkSurface,
             title = {
-                Text("Etiquetar Vista de Referencia", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Etiquetar Vista de Referencia Espacial", color = Color.White, fontWeight = FontWeight.Bold)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "Selecciona la vista (Frente, Lado, Atrás) o escribe un nombre para el artista:",
+                        "Selecciona la posición angular de esta foto para anclarla espacialmente:",
                         fontSize = 12.sp,
                         color = Color.LightGray
                     )
@@ -564,7 +760,7 @@ fun LightboxScreen(
                     OutlinedTextField(
                         value = customViewName,
                         onValueChange = { customViewName = it },
-                        label = { Text("Nombre Personalizado") },
+                        label = { Text("Nombre / Ángulo Personalizado") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -592,6 +788,49 @@ fun LightboxScreen(
                     Text("Cancelar", color = Color.Gray)
                 }
             }
+        )
+    }
+}
+
+@Composable
+fun SpatialMarkersOverlay(activeAngle: Float) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+
+        // Center alignment crosshair
+        drawLine(
+            color = Color.Cyan.copy(alpha = 0.35f),
+            start = Offset(centerX - 30f, centerY),
+            end = Offset(centerX + 30f, centerY),
+            strokeWidth = 2f
+        )
+        drawLine(
+            color = Color.Cyan.copy(alpha = 0.35f),
+            start = Offset(centerX, centerY - 30f),
+            end = Offset(centerX, centerY + 30f),
+            strokeWidth = 2f
+        )
+
+        // Marker 1: Circle (X axis / Frente)
+        drawCircle(
+            color = Color.Yellow.copy(alpha = 0.45f),
+            radius = 16f,
+            center = Offset(centerX - 160f, centerY + 180f),
+            style = Stroke(width = 3f)
+        )
+
+        // Marker 2: Triangle (Z axis / Perfil)
+        val path = Path().apply {
+            moveTo(centerX + 160f, centerY + 165f)
+            lineTo(centerX + 145f, centerY + 195f)
+            lineTo(centerX + 175f, centerY + 195f)
+            close()
+        }
+        drawPath(
+            path = path,
+            color = Color.Cyan.copy(alpha = 0.45f),
+            style = Stroke(width = 3f)
         )
     }
 }

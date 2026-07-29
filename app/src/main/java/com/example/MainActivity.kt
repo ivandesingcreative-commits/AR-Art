@@ -20,6 +20,7 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LightboxScreen
 import com.example.ui.screens.ProjectDetailScreen
 import com.example.ui.screens.TimelapseScreen
+import com.example.ui.screens.PrintableMarkersScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.viewmodel.ProjectViewModel
@@ -59,20 +60,29 @@ fun ClayStudioAppNavHost(viewModel: ProjectViewModel) {
                 onNavigateToAr = { navController.navigate("ar") },
                 onNavigateToTimelapse = { navController.navigate("timelapse") },
                 onNavigateToProjectDetail = { id -> navController.navigate("project_detail/$id") },
-                onNavigateToCloudSync = { navController.navigate("cloud_sync") }
+                onNavigateToCloudSync = { navController.navigate("cloud_sync") },
+                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") }
             )
         }
 
         composable("lightbox") {
             LightboxScreen(
                 viewModel = viewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") }
             )
         }
 
         composable("ar") {
             ArSculptScreen(
                 viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") }
+            )
+        }
+
+        composable("printable_markers") {
+            PrintableMarkersScreen(
                 onBack = { navController.popBackStack() }
             )
         }

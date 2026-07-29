@@ -1,12 +1,13 @@
 package com.example.model
 
 enum class Guide3DType(val displayName: String, val description: String) {
-    HEAD_BUST("Busto / Cabeza", "Guía de proporciones para rostro, ojos y nariz"),
-    SPHERE("Esfera / Masa Base", "Masa esférica para figuras redondas y cabezas"),
-    CYLINDER("Cilindro / Extremidad", "Guía para brazos, piernas y cuellos de arcilla"),
-    ANIMAL_FORM("Cuerpo de Animal", "Masa anatómica para cuadrúpedos y criaturas"),
-    TORSO("Torso / Pecho", "Proporciones de torso humano o personaje"),
-    POT_VASE("Vasija / Cuenco", "Guía de simetría circular para objetos cóncavos")
+    SPHERE("Esfera / Masa Base", "Primitiva esférica para volumen inicial y cabezas"),
+    CUBE("Cubo / Prisma Rectangular", "Primitiva cúbica para bloques, cajas y planos rectos"),
+    CYLINDER("Cilindro / Columna", "Guía cilíndrica para brazos, piernas y cuellos"),
+    CONE("Cono / Pirámide", "Primitiva cónica para bases cónicas y bocetas"),
+    HEAD_BUST("Cabeza / Bloque Anatómico", "Guía Loomis de proporciones para cabeza y rostro"),
+    TORSO("Torso / Caja Torácica", "Estructura de volumen para pecho y cadera"),
+    POT_VASE("Objeto Cóncavo / Revolución", "Simetría circular para vasijas y recipientes")
 }
 
 data class Vector3D(val x: Float, val y: Float, val z: Float)
@@ -45,7 +46,30 @@ data class Mesh3D(
                     }
                 }
             }
-            return Mesh3D(vertices, edges, "Esfera de Arcilla")
+            return Mesh3D(vertices, edges, "Esfera Primitiva")
+        }
+
+        fun createCube(size: Float = 160f): Mesh3D {
+            val h = size / 2f
+            val vertices = listOf(
+                Vector3D(-h, -h, -h), // 0
+                Vector3D(h, -h, -h),  // 1
+                Vector3D(h, h, -h),   // 2
+                Vector3D(-h, h, -h),  // 3
+                Vector3D(-h, -h, h),  // 4
+                Vector3D(h, -h, h),   // 5
+                Vector3D(h, h, h),    // 6
+                Vector3D(-h, h, h)    // 7
+            )
+            val edges = listOf(
+                // Bottom face
+                Edge3D(0, 1), Edge3D(1, 2), Edge3D(2, 3), Edge3D(3, 0),
+                // Top face
+                Edge3D(4, 5), Edge3D(5, 6), Edge3D(6, 7), Edge3D(7, 4),
+                // Pillars
+                Edge3D(0, 4), Edge3D(1, 5), Edge3D(2, 6), Edge3D(3, 7)
+            )
+            return Mesh3D(vertices, edges, "Cubo Primitivo")
         }
 
         fun createCylinder(radius: Float = 70f, height: Float = 200f, segments: Int = 12): Mesh3D {
@@ -62,7 +86,6 @@ data class Mesh3D(
                 }
             }
 
-            // Edges for 3 rings
             for (ring in 0..2) {
                 for (i in 0 until segments) {
                     val current = ring * segments + i
@@ -76,14 +99,37 @@ data class Mesh3D(
             return Mesh3D(vertices, edges, "Cilindro Base")
         }
 
+        fun createCone(radius: Float = 90f, height: Float = 200f, segments: Int = 10): Mesh3D {
+            val vertices = mutableListOf<Vector3D>()
+            val edges = mutableListOf<Edge3D>()
+
+            // Apex
+            vertices.add(Vector3D(0f, height / 2f, 0f))
+
+            // Base circle
+            val baseY = -height / 2f
+            for (i in 0 until segments) {
+                val angle = 2.0 * Math.PI * i / segments
+                val x = (radius * Math.cos(angle)).toFloat()
+                val z = (radius * Math.sin(angle)).toFloat()
+                vertices.add(Vector3D(x, baseY, z))
+            }
+
+            // Edges from apex to base
+            for (i in 1..segments) {
+                val next = if (i == segments) 1 else i + 1
+                edges.add(Edge3D(0, i))
+                edges.add(Edge3D(i, next))
+            }
+            return Mesh3D(vertices, edges, "Cono Primitivo")
+        }
+
         fun createHeadBust(scale: Float = 1.2f): Mesh3D {
             val baseSphere = createSphere(radius = 80f * scale, rings = 7, segments = 10)
             val vList = baseSphere.vertices.map { v ->
-                // Stretch vertically for head skull, flatten sides
                 Vector3D(v.x * 0.85f, v.y * 1.25f, v.z * 0.95f)
             }.toMutableList()
 
-            // Add jaw line points
             val jawIdxStart = vList.size
             vList.add(Vector3D(-40f * scale, -100f * scale, 30f * scale))
             vList.add(Vector3D(0f * scale, -120f * scale, 50f * scale))
@@ -93,30 +139,7 @@ data class Mesh3D(
             eList.add(Edge3D(jawIdxStart, jawIdxStart + 1))
             eList.add(Edge3D(jawIdxStart + 1, jawIdxStart + 2))
 
-            return Mesh3D(vList, eList, "Busto de Cabeza")
-        }
-
-        fun createAnimalBody(): Mesh3D {
-            val vertices = mutableListOf<Vector3D>()
-            val edges = mutableListOf<Edge3D>()
-
-            // Chest sphere
-            val chestMesh = createSphere(radius = 60f, rings = 5, segments = 8)
-            val chestOffset = chestMesh.vertices.map { Vector3D(it.x - 50f, it.y, it.z) }
-            vertices.addAll(chestOffset)
-
-            // Hip sphere
-            val hipOffset = chestMesh.vertices.map { Vector3D(it.x + 60f, it.y * 0.85f, it.z * 0.85f) }
-            val hipStart = vertices.size
-            vertices.addAll(hipOffset)
-
-            // Edges between chest and hip (spine)
-            edges.addAll(chestMesh.edges)
-            edges.addAll(chestMesh.edges.map { Edge3D(it.start + hipStart, it.end + hipStart) })
-            edges.add(Edge3D(0, hipStart))
-            edges.add(Edge3D(4, hipStart + 4))
-
-            return Mesh3D(vertices, edges, "Cuerpo de Criatura")
+            return Mesh3D(vList, eList, "Cabeza Anatómica")
         }
     }
 }

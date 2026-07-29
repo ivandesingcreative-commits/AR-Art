@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Details
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.AlertDialog
@@ -84,7 +85,8 @@ fun HomeScreen(
     onNavigateToAr: () -> Unit,
     onNavigateToTimelapse: () -> Unit,
     onNavigateToProjectDetail: (Long) -> Unit,
-    onNavigateToCloudSync: () -> Unit
+    onNavigateToCloudSync: () -> Unit,
+    onNavigateToPrintableMarkers: () -> Unit
 ) {
     val projects by viewModel.projects.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
@@ -203,17 +205,27 @@ fun HomeScreen(
                 ) {
                     ToolActionCard(
                         title = "Galería de Avances",
-                        subtitle = "Capturas y Comparativa",
+                        subtitle = "Capturas & Comparativas",
                         icon = Icons.Default.PhotoCamera,
                         accentColor = TerracottaPrimary,
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
                             .testTag("card_tool_timelapse"),
                         onClick = {
                             viewModel.ensureDefaultProject {
                                 onNavigateToTimelapse()
                             }
                         }
+                    )
+                    ToolActionCard(
+                        title = "Marcadores & QR",
+                        subtitle = "Imprimir Hoja Ejes X,Y,Z",
+                        icon = Icons.Default.QrCode2,
+                        accentColor = ArNeonGold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("card_tool_printable_markers"),
+                        onClick = onNavigateToPrintableMarkers
                     )
                 }
             }
@@ -548,7 +560,7 @@ private fun NewProjectDialog(
     var thicknessMm by remember { mutableFloatStateOf(15f) }
     var notes by remember { mutableStateOf("") }
 
-    val categories = listOf("Busto / Personaje", "Figura de Animal", "Vasija / Cuenco", "Miniatura", "Cuadro / Relieve", "Otro")
+    val categories = listOf("Busto / Personaje", "Forma / Objeto Geométrico", "Vasija / Cuenco", "Miniatura", "Cuadro / Relieve", "Otro")
 
     AlertDialog(
         onDismissRequest = onDismiss,

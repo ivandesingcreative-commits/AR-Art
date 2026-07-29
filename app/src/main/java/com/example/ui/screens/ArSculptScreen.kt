@@ -18,15 +18,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,22 +73,26 @@ import com.example.ui.theme.StudioDarkCard
 import com.example.ui.theme.StudioDarkSurface
 import com.example.ui.theme.TerracottaPrimary
 import com.example.ui.viewmodel.ProjectViewModel
+import com.example.util.rememberOrientationDegrees
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArSculptScreen(
     viewModel: ProjectViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToPrintableMarkers: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
-    var selectedGuideType by remember { mutableStateOf(Guide3DType.HEAD_BUST) }
+    var selectedGuideType by remember { mutableStateOf(Guide3DType.SPHERE) }
     var isCameraArMode by remember { mutableStateOf(true) }
     var isWireframe by remember { mutableStateOf(true) }
     var showProportions by remember { mutableStateOf(true) }
-    var arOpacity by remember { mutableFloatStateOf(0.7f) }
+    var enableGyro by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
 
     var activeImageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    val azimuthAngle = rememberOrientationDegrees(enabled = enableGyro)
 
     LaunchedEffect(Unit) {
         viewModel.ensureDefaultProject {}
@@ -89,10 +100,11 @@ fun ArSculptScreen(
 
     val currentMesh = remember(selectedGuideType) {
         when (selectedGuideType) {
-            Guide3DType.HEAD_BUST -> Mesh3D.createHeadBust()
             Guide3DType.SPHERE -> Mesh3D.createSphere()
+            Guide3DType.CUBE -> Mesh3D.createCube()
             Guide3DType.CYLINDER -> Mesh3D.createCylinder()
-            Guide3DType.ANIMAL_FORM -> Mesh3D.createAnimalBody()
+            Guide3DType.CONE -> Mesh3D.createCone()
+            Guide3DType.HEAD_BUST -> Mesh3D.createHeadBust()
             Guide3DType.TORSO -> Mesh3D.createCylinder(radius = 90f, height = 240f)
             Guide3DType.POT_VASE -> Mesh3D.createSphere(radius = 110f, rings = 10, segments = 16)
         }
@@ -104,12 +116,12 @@ fun ArSculptScreen(
                 title = {
                     Column {
                         Text(
-                            "Realidad Aumentada & Guía 3D",
+                            "Superposición AR y Mallas 3D",
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            "Compara tu modelo de arcilla con la malla 3D",
+                            "Primitivas geométricas • ${azimuthAngle.toInt()}°",
                             fontSize = 12.sp,
                             color = ArNeonCyan
                         )
@@ -118,6 +130,14 @@ fun ArSculptScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("btn_ar_back")) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onNavigateToPrintableMarkers, modifier = Modifier.testTag("btn_ar_qr_printable")) {
+                        Icon(Icons.Default.QrCode2, contentDescription = "Marcadores y QR", tint = ArNeonCyan)
+                    }
+                    IconButton(onClick = { showHelpDialog = true }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Instrucciones", tint = ArNeonGold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -161,12 +181,30 @@ fun ArSculptScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(StudioDarkSurface.copy(alpha = 0.9f))
+                    .background(StudioDarkSurface.copy(alpha = 0.92f))
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Guide Selector Row
-                Text("Modelo 3D de Guía Anatómica / Estructura:", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                // Gyroscope tracking row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Explore, contentDescription = null, tint = ArNeonGold, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Orientación por Giroscopio: ${azimuthAngle.toInt()}°", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Switch(
+                        checked = enableGyro,
+                        onCheckedChange = { enableGyro = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
+                    )
+                }
+
+                // Geometric Primitives Selector Row
+                Text("Primitiva Geométrica de Guía:", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Guide3DType.entries.toTypedArray()) { guide ->
                         val isSel = guide == selectedGuideType
@@ -212,7 +250,7 @@ fun ArSculptScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Layers, contentDescription = null, tint = ArNeonGold)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Líneas de Proporción Facial / Áurea", fontSize = 12.sp, color = Color.White)
+                        Text("Líneas de Proporción / Cuadrícula", fontSize = 12.sp, color = Color.White)
                     }
                     Switch(
                         checked = showProportions,
@@ -228,7 +266,7 @@ fun ArSculptScreen(
                             context = context,
                             imageCapture = activeImageCapture,
                             onPhotoCaptured = { savedUri ->
-                                viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = "Guía 3D: ${selectedGuideType.displayName}")
+                                viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = "Primitiva 3D: ${selectedGuideType.displayName}")
                                 Toast.makeText(context, "📸 Captura de comparación 3D guardada", Toast.LENGTH_SHORT).show()
                             }
                         )
@@ -240,9 +278,34 @@ fun ArSculptScreen(
                 ) {
                     Icon(Icons.Default.CameraAlt, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Capturar Comparación de Progreso 3D")
+                    Text("Capturar Comparación 3D")
                 }
             }
         }
+    }
+
+    if (showHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showHelpDialog = false },
+            containerColor = StudioDarkSurface,
+            title = {
+                Text("Instrucciones de Anclaje Geométrica 3D", color = Color.White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("• Usa figuras geométricas simples (Esfera, Cubo, Cilindro, Cono) para estructurar el volumen inicial de tu escultura.", fontSize = 12.sp, color = Color.LightGray)
+                    Text("• Coloca marcas de referencia física (ej. 🔴 X, 🔺 Z) en tu mesa de modelado.", fontSize = 12.sp, color = Color.LightGray)
+                    Text("• Activa el Giroscopio para que el modelo 3D rote conforme mueves la cámara alrededor de la pieza.", fontSize = 12.sp, color = Color.LightGray)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showHelpDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary)
+                ) {
+                    Text("Aceptar")
+                }
+            }
+        )
     }
 }
