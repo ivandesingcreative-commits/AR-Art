@@ -107,6 +107,11 @@ import com.example.ui.theme.ArNeonCyan
 import com.example.ui.theme.ArNeonGold
 import com.example.ui.theme.StudioDarkCard
 import com.example.ui.theme.StudioDarkSurface
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.ModelTraining
+import com.example.util.Obj3DFileParser
 import com.example.ui.theme.TerracottaPrimary
 import com.example.ui.viewmodel.ProjectViewModel
 import com.example.util.rememberOrientationDegrees
@@ -131,7 +136,8 @@ val CANONICAL_ANGLES = listOf(
 fun LightboxScreen(
     viewModel: ProjectViewModel,
     onBack: () -> Unit,
-    onNavigateToPrintableMarkers: () -> Unit = {}
+    onNavigateToPrintableMarkers: () -> Unit = {},
+    onNavigateToFileExplorer: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentProject by viewModel.currentProject.collectAsState()
@@ -143,6 +149,8 @@ fun LightboxScreen(
     var traceThreshold by remember { mutableFloatStateOf(0.5f) }
     var scale by remember { mutableFloatStateOf(1f) }
     var rotation by remember { mutableFloatStateOf(0f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
     var flipHorizontal by remember { mutableStateOf(false) }
     var gridType by remember { mutableStateOf(GridType.RULE_OF_THIRDS) }
 
@@ -159,9 +167,11 @@ fun LightboxScreen(
     // Geometric 3D Guide overlay mode
     var enable3DGuideOverlay by remember { mutableStateOf(false) }
     var guide3DType by remember { mutableStateOf(Guide3DType.SPHERE) }
+    var customImportedMesh by remember { mutableStateOf<Mesh3D?>(null) }
 
     var lensFacing by remember { mutableIntStateOf(androidx.camera.core.CameraSelector.LENS_FACING_BACK) }
     var showControls by remember { mutableStateOf(true) }
+    var isPanelCollapsed by remember { mutableStateOf(false) }
     var activeImageCapture by remember { mutableStateOf<ImageCapture?>(null) }
 
     var showNameDialog by remember { mutableStateOf(false) }
@@ -201,8 +211,23 @@ fun LightboxScreen(
         }
     }
 
-    val currentMesh = remember(guide3DType) {
-        when (guide3DType) {
+    val objFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { fileUri ->
+            val parsed = Obj3DFileParser.parseObjFile(context, fileUri, "Modelo 3D Importado")
+            if (parsed != null) {
+                customImportedMesh = parsed
+                enable3DGuideOverlay = true
+                Toast.makeText(context, "✅ Modelo 3D .OBJ cargado (${parsed.vertices.size} vértices)", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(context, "❌ No se pudo leer el archivo .OBJ", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val currentMesh = remember(guide3DType, customImportedMesh) {
+        customImportedMesh ?: when (guide3DType) {
             Guide3DType.SPHERE -> Mesh3D.createSphere()
             Guide3DType.CUBE -> Mesh3D.createCube()
             Guide3DType.CYLINDER -> Mesh3D.createCylinder()
@@ -236,6 +261,9 @@ fun LightboxScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToFileExplorer, modifier = Modifier.testTag("btn_file_explorer")) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = "Explorador de Archivos", tint = ArNeonGold)
+                    }
                     IconButton(onClick = onNavigateToPrintableMarkers, modifier = Modifier.testTag("btn_qr_printable")) {
                         Icon(Icons.Default.QrCode2, contentDescription = "Marcadores y QR", tint = ArNeonCyan)
                     }
@@ -252,9 +280,9 @@ fun LightboxScreen(
                         Icon(Icons.Default.Cameraswitch, contentDescription = "Cambiar Cámara", tint = Color.White)
                     }
                     IconButton(
-                        onClick = { showControls = !showControls }
+                        onClick = { isPanelCollapsed = !isPanelCollapsed }
                     ) {
-                        Icon(Icons.Default.Tune, contentDescription = "Ajustes", tint = Color.White)
+                        Icon(if (isPanelCollapsed) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = "Plegar/Desplegar", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -288,7 +316,7 @@ fun LightboxScreen(
                 )
             }
 
-            // Reference Photo Overlay View with Gestures
+            // Reference Photo Overlay View with Gestures (Pan X/Y, Pinch Scale, Rotate)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -296,6 +324,8 @@ fun LightboxScreen(
                         detectTransformGestures { _, pan, zoom, rotate ->
                             scale = (scale * zoom).coerceIn(0.2f, 5.0f)
                             rotation += rotate
+                            offsetX += pan.x
+                            offsetY += pan.y
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -326,6 +356,8 @@ fun LightboxScreen(
                                 scaleX = if (flipHorizontal) -scale else scale
                                 scaleY = scale
                                 rotationZ = rotation
+                                translationX = offsetX
+                                translationY = offsetY
                             }
                     )
                 } else if (!enable3DGuideOverlay) {
@@ -355,7 +387,7 @@ fun LightboxScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Toca el botón + abajo para agregar referencias (Frente, Perfil, Atrás)",
+                                "Arrastra en pantalla para ajustar posición. Toca + para agregar referencia.",
                                 color = Color.LightGray,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -365,7 +397,7 @@ fun LightboxScreen(
                 }
             }
 
-            // Spatial Reference Markers Overlay (Circles for X, Triangles for Z, Center Reticle)
+            // Spatial Reference Markers Overlay
             if (showSpatialMarkers) {
                 SpatialMarkersOverlay(activeAngle = activeAngle)
             }
@@ -376,19 +408,56 @@ fun LightboxScreen(
                 lineColor = ArNeonCyan
             )
 
-            // Control Panels & Quick Reference Selector Overlay
-            AnimatedVisibility(
-                visible = showControls,
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
+            // Collapsed Quick Floating Bar
+            if (isPanelCollapsed) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                        .background(StudioDarkSurface.copy(alpha = 0.9f), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = { isPanelCollapsed = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = StudioDarkCard)
+                    ) {
+                        Icon(Icons.Default.ExpandLess, contentDescription = null, tint = ArNeonGold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Mostrar Menú", fontSize = 12.sp, color = Color.White)
+                    }
+
+                    Button(
+                        onClick = {
+                            takeCameraPhoto(
+                                context = context,
+                                imageCapture = activeImageCapture,
+                                onPhotoCaptured = { savedUri ->
+                                    val activeViewLabel = selectedPhoto?.title ?: "Vista ${activeAngle.toInt()}°"
+                                    viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = activeViewLabel)
+                                    Toast.makeText(context, "📸 Captura guardada", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Capturar", fontSize = 12.sp)
+                    }
+                }
+            } else {
+                // Expanded Bottom Control Panel
                 Column(
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(StudioDarkSurface.copy(alpha = 0.94f))
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // DIAL DE ÁNGULO Y SEGUIMIENTO GIROSCÓPICO
+                    // Header with Collapse Button
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -404,18 +473,13 @@ fun LightboxScreen(
                                 color = Color.White
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Auto Giroscopio", fontSize = 11.sp, color = ArNeonCyan)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Switch(
-                                checked = enableGyroTracking,
-                                onCheckedChange = { enableGyroTracking = it },
-                                colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
-                            )
+
+                        IconButton(onClick = { isPanelCollapsed = true }) {
+                            Icon(Icons.Default.ExpandMore, contentDescription = "Ocultar Menú", tint = Color.LightGray)
                         }
                     }
 
-                    // Angle Presets (Frente 0°, 3/4 45°, Lado 90°, Atrás 180°, etc.)
+                    // Angle Presets
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(CANONICAL_ANGLES) { preset ->
                             val isSel = Math.abs(preset.degrees - (activeAngle % 360f)) < 25f
@@ -438,17 +502,7 @@ fun LightboxScreen(
                         }
                     }
 
-                    // Manual Angle Slider Dial
-                    if (!enableGyroTracking) {
-                        Slider(
-                            value = manualAngleDegrees,
-                            onValueChange = { manualAngleDegrees = it },
-                            valueRange = 0f..360f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    // QUICK ACCESS BAR FOR REFERENCE IMAGES (Frente, Lado, Atrás, etc.)
+                    // Quick Reference Images Bar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -460,40 +514,36 @@ fun LightboxScreen(
                             fontWeight = FontWeight.Bold,
                             color = ArNeonGold
                         )
-                        TextButton(
-                            onClick = { photoPickerLauncher.launch("image/*") },
-                            modifier = Modifier.testTag("btn_upload_reference_photo")
-                        ) {
-                            Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = TerracottaPrimary, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Cargar Vista", fontSize = 12.sp, color = TerracottaPrimary, fontWeight = FontWeight.Bold)
+                        Row {
+                            TextButton(
+                                onClick = { photoPickerLauncher.launch("image/*") },
+                                modifier = Modifier.testTag("btn_upload_reference_photo")
+                            ) {
+                                Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = TerracottaPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("+ Imagen", fontSize = 11.sp, color = TerracottaPrimary, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
 
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(referencePhotos) { photo ->
                             val isSel = selectedPhoto?.id == photo.id
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = if (isSel) TerracottaPrimary else StudioDarkCard,
-                                modifier = Modifier
-                                    .clickable { viewModel.selectReferencePhoto(photo) }
-                                    .border(
-                                        width = if (isSel) 2.dp else 1.dp,
-                                        color = if (isSel) ArNeonGold else Color.Transparent,
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
+                                modifier = Modifier.clickable { viewModel.selectReferencePhoto(photo) }
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(6.dp)
                                 ) {
                                     Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.size(38.dp)
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.size(32.dp)
                                     ) {
                                         AsyncImage(
                                             model = photo.imageUri,
@@ -502,21 +552,8 @@ fun LightboxScreen(
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            photo.title.ifBlank { "Vista" },
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            photo.angle,
-                                            fontSize = 10.sp,
-                                            color = if (isSel) Color.White.copy(alpha = 0.8f) else Color.LightGray
-                                        )
-                                    }
                                     Spacer(modifier = Modifier.width(6.dp))
+                                    Text(photo.title, fontSize = 11.sp, color = Color.White)
                                 }
                             }
                         }
@@ -527,13 +564,13 @@ fun LightboxScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Opacity, contentDescription = null, tint = ArNeonGold)
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Default.Opacity, contentDescription = null, tint = ArNeonGold, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            "Opacidad: ${(opacity * 100).toInt()}%",
-                            fontSize = 12.sp,
+                            "Opacidad ${(opacity * 100).toInt()}%",
+                            fontSize = 11.sp,
                             color = Color.White,
-                            modifier = Modifier.width(110.dp)
+                            modifier = Modifier.width(90.dp)
                         )
                         Slider(
                             value = opacity,
@@ -543,72 +580,58 @@ fun LightboxScreen(
                         )
                     }
 
-                    // 3D Pure Geometric Primitives Selector Overlay
+                    // 3D Geometric Overlay & OBJ Import Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ViewInAr, contentDescription = null, tint = ArNeonCyan)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Malla 3D Geométrica Primitiva", fontSize = 12.sp, color = Color.White)
+                            Icon(Icons.Default.ViewInAr, contentDescription = null, tint = ArNeonCyan, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Malla 3D Guía / OBJ", fontSize = 11.sp, color = Color.White)
                         }
-                        Switch(
-                            checked = enable3DGuideOverlay,
-                            onCheckedChange = { enable3DGuideOverlay = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
-                        )
-                    }
-
-                    if (enable3DGuideOverlay) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(Guide3DType.entries.toTypedArray()) { guide ->
-                                val isSel = guide == guide3DType
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSel) ArNeonCyan else StudioDarkCard,
-                                    modifier = Modifier.clickable { guide3DType = guide }
-                                ) {
-                                    Text(
-                                        guide.displayName,
-                                        fontSize = 11.sp,
-                                        color = if (isSel) Color.Black else Color.LightGray,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { objFilePickerLauncher.launch("*/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = StudioDarkCard),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Icon(Icons.Default.ModelTraining, contentDescription = null, tint = ArNeonCyan, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Cargar .OBJ 3D", fontSize = 10.sp, color = Color.White)
                             }
+                            Switch(
+                                checked = enable3DGuideOverlay,
+                                onCheckedChange = { enable3DGuideOverlay = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
+                            )
                         }
                     }
 
-                    // Transform Actions & REAL CAPTURE BUTTON
+                    // Transform Reset & Capture Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            IconButton(
-                                onClick = { flipHorizontal = !flipHorizontal },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Flip, contentDescription = "Voltear", tint = Color.White)
-                            }
                             Button(
                                 onClick = {
                                     scale = 1f
                                     rotation = 0f
+                                    offsetX = 0f
+                                    offsetY = 0f
                                     flipHorizontal = false
                                     opacity = 0.55f
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = StudioDarkCard),
                                 modifier = Modifier.height(36.dp)
                             ) {
-                                Text("Restablecer", fontSize = 11.sp)
+                                Text("Reajustar Pantalla", fontSize = 11.sp)
                             }
                         }
 
-                        // REAL PHOTO CAPTURE BUTTON
                         Button(
                             onClick = {
                                 takeCameraPhoto(
@@ -617,16 +640,14 @@ fun LightboxScreen(
                                     onPhotoCaptured = { savedUri ->
                                         val activeViewLabel = selectedPhoto?.title ?: "Vista ${activeAngle.toInt()}°"
                                         viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = activeViewLabel)
-                                        Toast.makeText(context, "📸 Captura guardada en Galería de Avances", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "📸 Captura guardada en Galería", Toast.LENGTH_SHORT).show()
                                     }
                                 )
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
-                            modifier = Modifier
-                                .height(42.dp)
-                                .testTag("btn_capture_lightbox_snapshot")
+                            modifier = Modifier.height(38.dp)
                         ) {
-                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Capturar Avance", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }

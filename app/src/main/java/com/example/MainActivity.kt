@@ -21,6 +21,7 @@ import com.example.ui.screens.LightboxScreen
 import com.example.ui.screens.ProjectDetailScreen
 import com.example.ui.screens.TimelapseScreen
 import com.example.ui.screens.PrintableMarkersScreen
+import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.viewmodel.ProjectViewModel
@@ -61,7 +62,8 @@ fun ClayStudioAppNavHost(viewModel: ProjectViewModel) {
                 onNavigateToTimelapse = { navController.navigate("timelapse") },
                 onNavigateToProjectDetail = { id -> navController.navigate("project_detail/$id") },
                 onNavigateToCloudSync = { navController.navigate("cloud_sync") },
-                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") }
+                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") },
+                onNavigateToFileExplorer = { navController.navigate("file_explorer") }
             )
         }
 
@@ -69,7 +71,8 @@ fun ClayStudioAppNavHost(viewModel: ProjectViewModel) {
             LightboxScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") }
+                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") },
+                onNavigateToFileExplorer = { navController.navigate("file_explorer") }
             )
         }
 
@@ -77,7 +80,15 @@ fun ClayStudioAppNavHost(viewModel: ProjectViewModel) {
             ArSculptScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") }
+                onNavigateToPrintableMarkers = { navController.navigate("printable_markers") },
+                onNavigateToFileExplorer = { navController.navigate("file_explorer") }
+            )
+        }
+
+        composable("file_explorer") {
+            FileExplorerScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() }
             )
         }
 

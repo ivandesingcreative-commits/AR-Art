@@ -72,6 +72,7 @@ import com.example.ui.theme.ArNeonCyan
 import com.example.ui.theme.ArNeonGold
 import com.example.ui.theme.ClayAmber
 import com.example.ui.theme.StudioDarkBg
+import androidx.compose.material.icons.filled.FolderOpen
 import com.example.ui.theme.StudioDarkCard
 import com.example.ui.theme.StudioDarkSurface
 import com.example.ui.theme.TerracottaPrimary
@@ -86,7 +87,8 @@ fun HomeScreen(
     onNavigateToTimelapse: () -> Unit,
     onNavigateToProjectDetail: (Long) -> Unit,
     onNavigateToCloudSync: () -> Unit,
-    onNavigateToPrintableMarkers: () -> Unit
+    onNavigateToPrintableMarkers: () -> Unit,
+    onNavigateToFileExplorer: () -> Unit = {}
 ) {
     val projects by viewModel.projects.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
@@ -112,6 +114,16 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = onNavigateToFileExplorer,
+                        modifier = Modifier.testTag("btn_file_explorer_header")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = "Explorador de Archivos y Carpetas",
+                            tint = ArNeonCyan
+                        )
+                    }
                     IconButton(
                         onClick = onNavigateToCloudSync,
                         modifier = Modifier.testTag("btn_cloud_sync_header")

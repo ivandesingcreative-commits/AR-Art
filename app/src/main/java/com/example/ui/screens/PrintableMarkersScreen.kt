@@ -68,6 +68,8 @@ import com.example.ui.theme.StudioDarkCard
 import com.example.ui.theme.StudioDarkSurface
 import com.example.ui.theme.TerracottaPrimary
 
+import com.example.util.PdfMarkerGenerator
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrintableMarkersScreen(
@@ -102,10 +104,10 @@ fun PrintableMarkersScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            Toast.makeText(context, "🖨️ Generando Hoja de Marcadores PDF...", Toast.LENGTH_SHORT).show()
+                            PdfMarkerGenerator.sharePdfFile(context)
                         }
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = "Imprimir Hoja", tint = ArNeonGold)
+                        Icon(Icons.Default.Print, contentDescription = "Imprimir PDF", tint = ArNeonGold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -158,14 +160,14 @@ fun PrintableMarkersScreen(
                     ) {
                         Button(
                             onClick = {
-                                Toast.makeText(context, "✨ Hoja de marcadores lista para imprimir en A4", Toast.LENGTH_SHORT).show()
+                                PdfMarkerGenerator.sharePdfFile(context)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
                             modifier = Modifier.testTag("btn_export_qr_pdf")
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Compartir / Imprimir Hoja A4", fontSize = 12.sp)
+                            Text("Generar e Imprimir PDF A4", fontSize = 12.sp)
                         }
                     }
                 }
