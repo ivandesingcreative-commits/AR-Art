@@ -25,7 +25,7 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
       with:
         cache-disabled: true
-        wrapper-validation-enabled: false
+        validate-wrappers: false
 
     - name: Generate debug keystore if missing
       run: |
