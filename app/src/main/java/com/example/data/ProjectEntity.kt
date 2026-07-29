@@ -9,6 +9,7 @@ data class ProjectEntity(
     val id: Long = 0,
     val title: String,
     val category: String = "Escultura de Arcilla", // Head / Bust, Animal, Miniature, Vase, Custom
+    val projectType: String = "FIGURA", // FIGURA (3D / Escultura) or PLANO (2D / Lienzo / Dibujo)
     val clayThicknessMm: Float = 15f, // Thickness in mm for drying calculation
     val createdTimestamp: Long = System.currentTimeMillis(),
     val status: String = "EN_PROCESO", // EN_PROCESO, SECANDO, LISTO_PARA_PINTAR, COMPLETADO

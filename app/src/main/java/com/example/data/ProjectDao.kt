@@ -63,6 +63,9 @@ interface ProjectDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTimelapseFrame(frame: TimelapseFrameEntity): Long
 
+    @Delete
+    suspend fun deleteTimelapseFrame(frame: TimelapseFrameEntity)
+
     @Query("DELETE FROM timelapse_frames WHERE projectId = :projectId")
     suspend fun clearTimelapseFrames(projectId: Long)
 }

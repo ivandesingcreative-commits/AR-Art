@@ -1,13 +1,15 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,11 +28,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Compare
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -46,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -76,6 +83,9 @@ import com.example.ui.theme.StudioDarkSurface
 import com.example.ui.theme.TerracottaPrimary
 import com.example.ui.viewmodel.ProjectViewModel
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,21 +97,15 @@ fun TimelapseScreen(
     val currentProject by viewModel.currentProject.collectAsState()
     val frames by viewModel.timelapseFrames.collectAsState()
 
-    var isRecordingTimelapse by remember { mutableStateOf(false) }
-    var captureIntervalSeconds by remember { mutableIntStateOf(10) }
     var isPlayingTimelapse by remember { mutableStateOf(false) }
-    var playbackSpeed by remember { mutableIntStateOf(5) }
+    var playbackSpeed by remember { mutableIntStateOf(3) }
     var currentFrameIndex by remember { mutableIntStateOf(0) }
 
-    // Automatic Capture Timer Simulation
-    LaunchedEffect(isRecordingTimelapse) {
-        while (isRecordingTimelapse) {
-            delay(captureIntervalSeconds * 1000L)
-            val fakeUri = "sample_timelapse_frame_${System.currentTimeMillis()}"
-            viewModel.addTimelapseSnapshot(fakeUri)
-            Toast.makeText(context, "📸 Fotograma timelapse registrado", Toast.LENGTH_SHORT).show()
-        }
-    }
+    var selectedFrameForDetail by remember { mutableStateOf<TimelapseFrameEntity?>(null) }
+    var isCompareMode by remember { mutableStateOf(false) }
+    var compareFrameA by remember { mutableStateOf<TimelapseFrameEntity?>(null) }
+    var compareFrameB by remember { mutableStateOf<TimelapseFrameEntity?>(null) }
+    var compareSliderPos by remember { mutableFloatStateOf(0.5f) }
 
     // Playback Loop
     LaunchedEffect(isPlayingTimelapse, playbackSpeed, frames.size) {
@@ -119,12 +123,12 @@ fun TimelapseScreen(
                 title = {
                     Column {
                         Text(
-                            "Timelapse del Proceso",
+                            "Galería de Avances y Capturas",
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            currentProject?.title ?: "Evolución de Escultura",
+                            currentProject?.title ?: "Evolución de la Escultura",
                             fontSize = 12.sp,
                             color = ArNeonCyan
                         )
@@ -133,6 +137,15 @@ fun TimelapseScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("btn_timelapse_back")) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { isCompareMode = !isCompareMode }) {
+                        Icon(
+                            Icons.Default.Compare,
+                            contentDescription = "Comparar Avances",
+                            tint = if (isCompareMode) ArNeonGold else Color.White
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -147,134 +160,186 @@ fun TimelapseScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Player Viewport Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = StudioDarkCard)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+            // SIDE-BY-SIDE COMPARISON MODE OR PLAYBACK VIEWPORT
+            if (isCompareMode && frames.size >= 2) {
+                val frameA = compareFrameA ?: frames.first()
+                val frameB = compareFrameB ?: frames.last()
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = StudioDarkCard)
                 ) {
-                    if (frames.isNotEmpty()) {
-                        val activeFrame = frames.getOrNull(currentFrameIndex) ?: frames.first()
-                        AsyncImage(
-                            model = activeFrame.imageUri,
-                            contentDescription = "Fotograma",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        // Playback Overlay Controls
-                        Surface(
-                            shape = CircleShape,
-                            color = StudioDarkSurface.copy(alpha = 0.7f),
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clickable { isPlayingTimelapse = !isPlayingTimelapse }
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (isPlayingTimelapse) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = ArNeonCyan,
-                                    modifier = Modifier.size(32.dp)
-                                )
+                            Text("Comparador de Avances (Antes vs Después)", color = ArNeonGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { isCompareMode = false }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
                             }
                         }
 
-                        // Frame Badge
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.Black.copy(alpha = 0.7f),
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(12.dp)
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                "Fotograma ${currentFrameIndex + 1} / ${frames.size}",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(compareSliderPos)
+                                        .fillMaxSize()
+                                ) {
+                                    AsyncImage(
+                                        model = frameA.imageUri,
+                                        contentDescription = "Antes",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.7f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(6.dp)
+                                    ) {
+                                        Text("Antes", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f - compareSliderPos)
+                                        .fillMaxSize()
+                                ) {
+                                    AsyncImage(
+                                        model = frameB.imageUri,
+                                        contentDescription = "Después",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Surface(
+                                        color = TerracottaPrimary.copy(alpha = 0.85f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                    ) {
+                                        Text("Después", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Timer,
-                                contentDescription = null,
-                                tint = ArNeonGold,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "Sin Fotogramas de Timelapse",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "Activa la captura automática o toma fotos de avances",
-                                color = Color.LightGray,
-                                fontSize = 12.sp
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Ajustar Comparación:", fontSize = 11.sp, color = Color.LightGray, modifier = Modifier.width(110.dp))
+                            Slider(
+                                value = compareSliderPos,
+                                onValueChange = { compareSliderPos = it },
+                                valueRange = 0.1f..0.9f,
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
                 }
-            }
-
-            // Interval & Recording Bar
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = StudioDarkCard)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+            } else {
+                // ANIMATED PLAYBACK VIEWPORT
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = StudioDarkCard)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column {
-                            Text(
-                                "Grabación Automática Timelapse",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 14.sp
+                        if (frames.isNotEmpty()) {
+                            val activeFrame = frames.getOrNull(currentFrameIndex) ?: frames.first()
+                            AsyncImage(
+                                model = activeFrame.imageUri,
+                                contentDescription = "Fotograma",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { selectedFrameForDetail = activeFrame }
                             )
-                            Text(
-                                "Captura fotos periódicas del modelado",
-                                fontSize = 11.sp,
-                                color = Color.LightGray
-                            )
-                        }
-                        Switch(
-                            checked = isRecordingTimelapse,
-                            onCheckedChange = { isRecordingTimelapse = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = TerracottaPrimary),
-                            modifier = Modifier.testTag("switch_timelapse_recording")
-                        )
-                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                            // Playback Toggle Overlay
+                            Surface(
+                                shape = CircleShape,
+                                color = StudioDarkSurface.copy(alpha = 0.75f),
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clickable { isPlayingTimelapse = !isPlayingTimelapse }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isPlayingTimelapse) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = ArNeonCyan,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                            }
 
-                    Text("Intervalo de Captura: $captureIntervalSeconds seg", fontSize = 12.sp, color = ArNeonCyan)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(5, 10, 30, 60).forEach { sec ->
-                            val isSel = captureIntervalSeconds == sec
+                            // Frame Info Badge
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isSel) ArNeonCyan else StudioDarkSurface,
-                                modifier = Modifier.clickable { captureIntervalSeconds = sec }
+                                color = Color.Black.copy(alpha = 0.75f),
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(12.dp)
                             ) {
+                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                    Text(
+                                        "Fotograma ${currentFrameIndex + 1} / ${frames.size} • ${activeFrame.stageLabel}",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(activeFrame.timestamp))
+                                    Text(
+                                        dateStr,
+                                        color = ArNeonCyan,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.CameraAlt,
+                                    contentDescription = null,
+                                    tint = ArNeonGold,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    "${sec}s",
-                                    fontSize = 11.sp,
-                                    color = if (isSel) Color.Black else Color.White,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    "Aún no hay capturas de avances",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Presiona 'Capturar Avance' en la Mesa de Luz o Guía AR para registrar fotos de tu escultura",
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
                         }
@@ -282,49 +347,31 @@ fun TimelapseScreen(
                 }
             }
 
-            // Manual Snapshot & Export Bar
+            // GRID HEADER & ACTIONS
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = {
-                        val fakeUri = "manual_timelapse_frame_${System.currentTimeMillis()}"
-                        viewModel.addTimelapseSnapshot(fakeUri)
-                        Toast.makeText(context, "📸 Captura agregada al timelapse", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("btn_add_timelapse_snapshot")
-                ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Tomar Foto")
-                }
+                Text(
+                    "Fotogramas Registrados (${frames.size})",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontSize = 15.sp
+                )
 
-                OutlinedButton(
-                    onClick = {
-                        Toast.makeText(context, "🎬 Video Timelapse exportado a la galería MP4", Toast.LENGTH_LONG).show()
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("btn_export_timelapse")
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null, tint = ArNeonCyan)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Exportar MP4", color = ArNeonCyan)
+                if (frames.size >= 2) {
+                    TextButton(onClick = { isCompareMode = !isCompareMode }) {
+                        Text(
+                            if (isCompareMode) "Ver Grilla" else "Modo Comparación",
+                            color = ArNeonCyan,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
 
-            // Timeline Grid of Captured Frames
-            Text(
-                "Galería de Fotogramas (${frames.size})",
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                fontSize = 15.sp
-            )
-
+            // GRID OF CAPTURED PHOTOS
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -333,11 +380,74 @@ fun TimelapseScreen(
             ) {
                 items(frames) { frame ->
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = StudioDarkCard,
                         modifier = Modifier
-                            .height(90.dp)
-                            .border(1.dp, StudioDarkSurface, RoundedCornerShape(10.dp))
+                            .height(100.dp)
+                            .clickable { selectedFrameForDetail = frame }
+                            .border(1.dp, StudioDarkSurface, RoundedCornerShape(12.dp))
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AsyncImage(
+                                model = frame.imageUri,
+                                contentDescription = frame.stageLabel,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.65f),
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                            ) {
+                                Text(
+                                    frame.stageLabel,
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // FULLSCREEN FRAME INSPECTION & DELETION DIALOG
+    if (selectedFrameForDetail != null) {
+        val frame = selectedFrameForDetail!!
+        val dateStr = SimpleDateFormat("dd MMMM yyyy - HH:mm", Locale.getDefault()).format(Date(frame.timestamp))
+
+        AlertDialog(
+            onDismissRequest = { selectedFrameForDetail = null },
+            containerColor = StudioDarkSurface,
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(frame.stageLabel, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(dateStr, color = ArNeonCyan, fontSize = 11.sp)
+                    }
+                    IconButton(onClick = { selectedFrameForDetail = null }) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                    }
+                }
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
                     ) {
                         AsyncImage(
                             model = frame.imageUri,
@@ -347,7 +457,38 @@ fun TimelapseScreen(
                         )
                     }
                 }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.deleteTimelapseFrame(frame)
+                            Toast.makeText(context, "Foto eliminada", Toast.LENGTH_SHORT).show()
+                            selectedFrameForDetail = null
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Eliminar", fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "image/*"
+                                putExtra(Intent.EXTRA_STREAM, Uri.parse(frame.imageUri))
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Compartir Avance de Escultura"))
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Compartir", fontSize = 12.sp)
+                    }
+                }
             }
-        }
+        )
     }
 }

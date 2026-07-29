@@ -107,6 +107,10 @@ class ProjectRepository(private val dao: ProjectDao) {
         dao.insertTimelapseFrame(frame)
     }
 
+    suspend fun deleteTimelapseFrame(frame: TimelapseFrameEntity) = withContext(Dispatchers.IO) {
+        dao.deleteTimelapseFrame(frame)
+    }
+
     // Cloud Sync simulation
     suspend fun syncAllToCloud(): Boolean = withContext(Dispatchers.IO) {
         // Simulate network roundtrip and mark projects as synced

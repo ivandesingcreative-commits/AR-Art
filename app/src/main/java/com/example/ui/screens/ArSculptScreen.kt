@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.camera.core.ImageCapture
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +59,7 @@ import com.example.model.Guide3DType
 import com.example.model.Mesh3D
 import com.example.ui.components.CameraPreview
 import com.example.ui.components.Sculpt3DViewport
+import com.example.ui.components.takeCameraPhoto
 import com.example.ui.theme.ArNeonCyan
 import com.example.ui.theme.ArNeonGold
 import com.example.ui.theme.StudioDarkCard
@@ -77,6 +80,12 @@ fun ArSculptScreen(
     var isWireframe by remember { mutableStateOf(true) }
     var showProportions by remember { mutableStateOf(true) }
     var arOpacity by remember { mutableFloatStateOf(0.7f) }
+
+    var activeImageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.ensureDefaultProject {}
+    }
 
     val currentMesh = remember(selectedGuideType) {
         when (selectedGuideType) {
@@ -125,7 +134,10 @@ fun ArSculptScreen(
         ) {
             // Camera Background for AR overlay mode
             if (isCameraArMode) {
-                CameraPreview(modifier = Modifier.fillMaxSize())
+                CameraPreview(
+                    onImageCaptureCreated = { activeImageCapture = it },
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
                 Box(
                     modifier = Modifier
@@ -154,7 +166,7 @@ fun ArSculptScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Guide Selector Row
-                Text("Modelo 3D de Guía Anatómica:", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Modelo 3D de Guía Anatómica / Estructura:", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Guide3DType.entries.toTypedArray()) { guide ->
                         val isSel = guide == selectedGuideType
@@ -212,8 +224,14 @@ fun ArSculptScreen(
                 // Capture Progress Button
                 Button(
                     onClick = {
-                        Toast.makeText(context, "📸 Captura de comparación 3D guardada", Toast.LENGTH_SHORT).show()
-                        viewModel.addTimelapseSnapshot("sample_ar_capture_${System.currentTimeMillis()}")
+                        takeCameraPhoto(
+                            context = context,
+                            imageCapture = activeImageCapture,
+                            onPhotoCaptured = { savedUri ->
+                                viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = "Guía 3D: ${selectedGuideType.displayName}")
+                                Toast.makeText(context, "📸 Captura de comparación 3D guardada", Toast.LENGTH_SHORT).show()
+                            }
+                        )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
                     modifier = Modifier

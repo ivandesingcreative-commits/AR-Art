@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Details
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.AlertDialog
@@ -83,7 +82,6 @@ fun HomeScreen(
     viewModel: ProjectViewModel,
     onNavigateToLightbox: () -> Unit,
     onNavigateToAr: () -> Unit,
-    onNavigateToSlowMo: () -> Unit,
     onNavigateToTimelapse: () -> Unit,
     onNavigateToProjectDetail: (Long) -> Unit,
     onNavigateToCloudSync: () -> Unit
@@ -105,7 +103,7 @@ fun HomeScreen(
                             color = Color.White
                         )
                         Text(
-                            "Mesa de Luz y Esculturas Air Dry Clay",
+                            "Estudio de Escultura y Superficies 2D / 3D",
                             fontSize = 12.sp,
                             color = ArNeonCyan
                         )
@@ -145,15 +143,14 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Studio Hero Card
+            // Studio Hero Card (DIRECT ACCESS WITHOUT FORCED PROJECT CREATION)
             item {
                 StudioHeroCard(onQuickLightbox = {
-                    if (projects.isNotEmpty() && selectedProjectId == null) {
-                        viewModel.selectProject(projects.first().id)
+                    viewModel.ensureDefaultProject {
+                        onNavigateToLightbox()
                     }
-                    onNavigateToLightbox()
                 })
             }
 
@@ -161,7 +158,7 @@ fun HomeScreen(
             item {
                 Text(
                     "Herramientas de Estudio",
-                    fontSize = 18.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -171,33 +168,31 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ToolActionCard(
-                        title = "Mesa de Luz",
-                        subtitle = "Superposición de fotos",
+                        title = "Mesa de Luz AR",
+                        subtitle = "Superposición & Transparencia",
                         icon = Icons.Default.Lightbulb,
                         accentColor = ArNeonGold,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("card_tool_lightbox"),
                         onClick = {
-                            if (projects.isNotEmpty() && selectedProjectId == null) {
-                                viewModel.selectProject(projects.first().id)
+                            viewModel.ensureDefaultProject {
+                                onNavigateToLightbox()
                             }
-                            onNavigateToLightbox()
                         }
                     )
                     ToolActionCard(
-                        title = "Realidad AR",
-                        subtitle = "Guías 3D de Arcilla",
+                        title = "Guías 3D & AR",
+                        subtitle = "Anatomía & Primitivas",
                         icon = Icons.Default.ViewInAr,
                         accentColor = ArNeonCyan,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("card_tool_ar"),
                         onClick = {
-                            if (projects.isNotEmpty() && selectedProjectId == null) {
-                                viewModel.selectProject(projects.first().id)
+                            viewModel.ensureDefaultProject {
+                                onNavigateToAr()
                             }
-                            onNavigateToAr()
                         }
                     )
                 }
@@ -207,28 +202,17 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ToolActionCard(
-                        title = "Cámara Lenta",
-                        subtitle = "Inspección de detalles",
-                        icon = Icons.Default.SlowMotionVideo,
-                        accentColor = Color(0xFFFF7043),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("card_tool_slowmo"),
-                        onClick = onNavigateToSlowMo
-                    )
-                    ToolActionCard(
-                        title = "Timelapse",
-                        subtitle = "Captura de avances",
+                        title = "Galería de Avances",
+                        subtitle = "Capturas y Comparativa",
                         icon = Icons.Default.PhotoCamera,
-                        accentColor = Color(0xFFAB47BC),
+                        accentColor = TerracottaPrimary,
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .testTag("card_tool_timelapse"),
                         onClick = {
-                            if (projects.isNotEmpty() && selectedProjectId == null) {
-                                viewModel.selectProject(projects.first().id)
+                            viewModel.ensureDefaultProject {
+                                onNavigateToTimelapse()
                             }
-                            onNavigateToTimelapse()
                         }
                     )
                 }
@@ -247,13 +231,13 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Mis Proyectos de Arcilla",
-                        fontSize = 18.sp,
+                        "Mis Proyectos Escultóricos",
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                     TextButton(onClick = { showNewProjectDialog = true }) {
-                        Text("+ Crear", color = TerracottaPrimary)
+                        Text("+ Crear Proyecto", color = TerracottaPrimary)
                     }
                 }
             }
@@ -280,8 +264,8 @@ fun HomeScreen(
     if (showNewProjectDialog) {
         NewProjectDialog(
             onDismiss = { showNewProjectDialog = false },
-            onCreate = { title, cat, thickness, notes ->
-                viewModel.createProject(title, cat, thickness, notes)
+            onCreate = { title, cat, projType, thickness, notes ->
+                viewModel.createProject(title, cat, projType, thickness, notes)
                 showNewProjectDialog = false
             }
         )
@@ -302,8 +286,8 @@ private fun StudioHeroCard(onQuickLightbox: () -> Unit) {
                     Brush.horizontalGradient(
                         colors = listOf(
                             StudioDarkCard,
-                            TerracottaPrimary.copy(alpha = 0.25f),
-                            ArNeonCyan.copy(alpha = 0.15f)
+                            TerracottaPrimary.copy(alpha = 0.28f),
+                            ArNeonCyan.copy(alpha = 0.18f)
                         )
                     )
                 )
@@ -313,8 +297,8 @@ private fun StudioHeroCard(onQuickLightbox: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = CircleShape,
-                        color = TerracottaPrimary.copy(alpha = 0.2f),
-                        modifier = Modifier.size(44.dp)
+                        color = TerracottaPrimary.copy(alpha = 0.25f),
+                        modifier = Modifier.size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -327,13 +311,13 @@ private fun StudioHeroCard(onQuickLightbox: () -> Unit) {
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            "Esculpe con Precisión AR",
+                            "Mesa de Luz & Referencias",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 17.sp
                         )
                         Text(
-                            "Proporciones reales en pantalla mientras esculpes",
+                            "Compara frente, lado y atrás con opacidad regulable en cámara",
                             color = Color.LightGray,
                             fontSize = 12.sp
                         )
@@ -353,7 +337,7 @@ private fun StudioHeroCard(onQuickLightbox: () -> Unit) {
                 ) {
                     Icon(Icons.Default.Lightbulb, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Abrir Mesa de Luz Ahora")
+                    Text("Abrir Mesa de Luz Ahora", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -379,14 +363,14 @@ private fun ToolActionCard(
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = accentColor.copy(alpha = 0.15f),
+                color = accentColor.copy(alpha = 0.18f),
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(icon, contentDescription = null, tint = accentColor)
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 title,
                 fontWeight = FontWeight.Bold,
@@ -442,9 +426,9 @@ private fun AirDryClayDryingWidget() {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "La arcilla de secado al aire requiere un secado uniforme sin calor directo para evitar grietas. Usa notificaciones push para tus hitos de lijado y pintado.",
+                "La arcilla requiere secado uniforme a temperatura ambiente. Registra tus fotos para evaluar la evolución.",
                 fontSize = 12.sp,
                 color = Color.LightGray
             )
@@ -473,13 +457,13 @@ private fun EmptyProjectsCard(onCreateClicked: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                "Aún no tienes proyectos de arcilla",
+                "Aún no tienes proyectos creados",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
             Text(
-                "Crea tu primer modelo para superponer fotos de referencia y medir proporciones.",
+                "Puedes usar la Mesa de Luz directamente o crear un proyecto organizado.",
                 color = Color.Gray,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(vertical = 6.dp)
@@ -523,7 +507,7 @@ private fun ProjectCardItem(
                         color = Color.White
                     )
                     Text(
-                        "${project.category} • Grosor ${project.clayThicknessMm.toInt()} mm",
+                        "${project.category} • ${if (project.projectType == "PLANO") "Plano / 2D" else "Figura / Escultura 3D"}",
                         fontSize = 12.sp,
                         color = ArNeonCyan
                     )
@@ -556,31 +540,73 @@ private fun ProjectCardItem(
 @Composable
 private fun NewProjectDialog(
     onDismiss: () -> Unit,
-    onCreate: (title: String, category: String, thickness: Float, notes: String) -> Unit
+    onCreate: (title: String, category: String, projectType: String, thickness: Float, notes: String) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Busto / Personaje") }
+    var projectType by remember { mutableStateOf("FIGURA") } // FIGURA (3D) or PLANO (2D)
     var thicknessMm by remember { mutableFloatStateOf(15f) }
     var notes by remember { mutableStateOf("") }
 
-    val categories = listOf("Busto / Personaje", "Figura de Animal", "Vasija / Cuenco", "Miniatura", "Otro")
+    val categories = listOf("Busto / Personaje", "Figura de Animal", "Vasija / Cuenco", "Miniatura", "Cuadro / Relieve", "Otro")
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = StudioDarkSurface,
         title = {
-            Text("Nuevo Proyecto de Arcilla", color = Color.White, fontWeight = FontWeight.Bold)
+            Text("Nuevo Proyecto del Artista", color = Color.White, fontWeight = FontWeight.Bold)
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Nombre de la Escultura") },
+                    label = { Text("Nombre del Proyecto / Obra") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_project_title")
                 )
+
+                Text("Tipo de Proyecto:", fontSize = 12.sp, color = Color.Gray)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isFigura = projectType == "FIGURA"
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isFigura) TerracottaPrimary else StudioDarkCard,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { projectType = "FIGURA" }
+                    ) {
+                        Text(
+                            "Figura / Escultura (3D)",
+                            fontSize = 11.sp,
+                            color = if (isFigura) Color.White else Color.LightGray,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp)
+                        )
+                    }
+
+                    val isPlano = projectType == "PLANO"
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isPlano) ArNeonCyan else StudioDarkCard,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { projectType = "PLANO" }
+                    ) {
+                        Text(
+                            "Plano / Lienzo (2D)",
+                            fontSize = 11.sp,
+                            color = if (isPlano) Color.Black else Color.LightGray,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp)
+                        )
+                    }
+                }
+
                 Text("Categoría:", fontSize = 12.sp, color = Color.Gray)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(categories) { cat ->
@@ -599,6 +625,7 @@ private fun NewProjectDialog(
                         }
                     }
                 }
+
                 Column {
                     Text(
                         "Grosor máximo de arcilla: ${thicknessMm.toInt()} mm",
@@ -611,23 +638,19 @@ private fun NewProjectDialog(
                         valueRange = 5f..60f,
                         steps = 11
                     )
-                    Text(
-                        "Tiempo de secado estimado: ${((thicknessMm / 10f) * 24f).toInt()} horas",
-                        fontSize = 11.sp,
-                        color = Color.Gray
-                    )
                 }
+
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notas de diseño o herramientas") },
+                    label = { Text("Notas de diseño o referencias") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
             Button(
-                onClick = { onCreate(title, category, thicknessMm, notes) },
+                onClick = { onCreate(title, category, projectType, thicknessMm, notes) },
                 colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
                 modifier = Modifier.testTag("btn_confirm_create_project")
             ) {

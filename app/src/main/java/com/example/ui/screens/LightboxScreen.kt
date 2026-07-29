@@ -4,6 +4,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageCapture
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,15 +27,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,15 +49,18 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -71,19 +80,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.R
 import com.example.data.ReferencePhotoEntity
+import com.example.model.Guide3DType
+import com.example.model.Mesh3D
 import com.example.ui.components.CameraPreview
 import com.example.ui.components.GridGuideOverlay
 import com.example.ui.components.GridType
+import com.example.ui.components.Sculpt3DViewport
+import com.example.ui.components.takeCameraPhoto
 import com.example.ui.theme.ArNeonCyan
 import com.example.ui.theme.ArNeonGold
-import com.example.ui.theme.StudioDarkBg
 import com.example.ui.theme.StudioDarkCard
 import com.example.ui.theme.StudioDarkSurface
 import com.example.ui.theme.TerracottaPrimary
@@ -108,15 +118,39 @@ fun LightboxScreen(
     var flipHorizontal by remember { mutableStateOf(false) }
     var gridType by remember { mutableStateOf(GridType.RULE_OF_THIRDS) }
 
+    // Geometric 3D Guide overlay mode
+    var enable3DGuideOverlay by remember { mutableStateOf(false) }
+    var guide3DType by remember { mutableStateOf(Guide3DType.HEAD_BUST) }
+
     var lensFacing by remember { mutableIntStateOf(androidx.camera.core.CameraSelector.LENS_FACING_BACK) }
     var showControls by remember { mutableStateOf(true) }
+    var activeImageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+
+    var showNameDialog by remember { mutableStateOf(false) }
+    var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    var customViewName by remember { mutableStateOf("Frente") }
+
+    LaunchedEffect(Unit) {
+        viewModel.ensureDefaultProject {}
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            viewModel.addReferencePhoto(it, "FRONTAL")
-            Toast.makeText(context, "Foto de referencia agregada", Toast.LENGTH_SHORT).show()
+            pendingUri = it
+            showNameDialog = true
+        }
+    }
+
+    val currentMesh = remember(guide3DType) {
+        when (guide3DType) {
+            Guide3DType.HEAD_BUST -> Mesh3D.createHeadBust()
+            Guide3DType.SPHERE -> Mesh3D.createSphere()
+            Guide3DType.CYLINDER -> Mesh3D.createCylinder()
+            Guide3DType.ANIMAL_FORM -> Mesh3D.createAnimalBody()
+            Guide3DType.TORSO -> Mesh3D.createCylinder(radius = 90f, height = 240f)
+            Guide3DType.POT_VASE -> Mesh3D.createSphere(radius = 110f, rings = 10, segments = 16)
         }
     }
 
@@ -126,12 +160,12 @@ fun LightboxScreen(
                 title = {
                     Column {
                         Text(
-                            "Mesa de Luz (Lightbox)",
+                            "Mesa de Luz (Estudio AR)",
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            currentProject?.title ?: "Superposición de Referencia",
+                            currentProject?.title ?: "Superposición y Referencias",
                             fontSize = 12.sp,
                             color = ArNeonCyan
                         )
@@ -173,10 +207,23 @@ fun LightboxScreen(
             // Background Live Camera Stream
             CameraPreview(
                 lensFacing = lensFacing,
+                onImageCaptureCreated = { activeImageCapture = it },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Reference Photo Overlay View
+            // Geometric 3D Mesh Guide Overlay if enabled
+            if (enable3DGuideOverlay) {
+                Sculpt3DViewport(
+                    mesh = currentMesh,
+                    lineColor = ArNeonCyan,
+                    accentColor = ArNeonGold,
+                    showProportionGuide = true,
+                    isWireframe = true,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Reference Photo Overlay View with Gestures
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -192,7 +239,6 @@ fun LightboxScreen(
 
                 if (currentPhotoUri != null) {
                     val colorMatrix = if (isTraceMode) {
-                        // High contrast trace filter matrix
                         ColorMatrix(
                             floatArrayOf(
                                 3.0f, 0.0f, 0.0f, 0.0f, -255f * traceThreshold,
@@ -205,7 +251,7 @@ fun LightboxScreen(
 
                     AsyncImage(
                         model = currentPhotoUri,
-                        contentDescription = "Foto de referencia",
+                        contentDescription = selectedPhoto?.title ?: "Foto de referencia",
                         colorFilter = colorMatrix?.let { ColorFilter.colorMatrix(it) },
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
@@ -217,8 +263,8 @@ fun LightboxScreen(
                                 rotationZ = rotation
                             }
                     )
-                } else {
-                    // Sample Default Lightbox Reference Overlay when no custom image added yet
+                } else if (!enable3DGuideOverlay) {
+                    // Empty state helper when no reference added yet
                     Box(
                         modifier = Modifier
                             .size(280.dp)
@@ -227,7 +273,10 @@ fun LightboxScreen(
                             .background(StudioDarkSurface.copy(alpha = 0.4f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
                             Icon(
                                 Icons.Default.CenterFocusStrong,
                                 contentDescription = null,
@@ -241,9 +290,10 @@ fun LightboxScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Sube o selecciona una foto de referencia abajo",
+                                "Toca el botón + abajo para agregar una foto (Frente, Lado, Atrás)",
                                 color = Color.LightGray,
-                                fontSize = 11.sp
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
                     }
@@ -256,7 +306,7 @@ fun LightboxScreen(
                 lineColor = ArNeonCyan
             )
 
-            // Control Panels Overlay
+            // Control Panels & Quick Reference Selector Overlay
             AnimatedVisibility(
                 visible = showControls,
                 modifier = Modifier.align(Alignment.BottomCenter)
@@ -264,27 +314,29 @@ fun LightboxScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(StudioDarkSurface.copy(alpha = 0.9f))
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .background(StudioDarkSurface.copy(alpha = 0.92f))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Reference Image Selector Row
+                    // QUICK ACCESS BAR FOR REFERENCE IMAGES (Frente, Lado, Atrás, etc.)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            "Fotos de Referencia",
-                            fontSize = 13.sp,
+                            "Acceso Rápido a Referencias",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = ArNeonGold
                         )
-                        IconButton(
+                        TextButton(
                             onClick = { photoPickerLauncher.launch("image/*") },
                             modifier = Modifier.testTag("btn_upload_reference_photo")
                         ) {
-                            Icon(Icons.Default.AddAPhoto, contentDescription = "Subir Foto", tint = TerracottaPrimary)
+                            Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = TerracottaPrimary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("+ Agregar Vista", fontSize = 12.sp, color = TerracottaPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -298,20 +350,49 @@ fun LightboxScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isSel) TerracottaPrimary else StudioDarkCard,
                                 modifier = Modifier
-                                    .size(60.dp)
                                     .clickable { viewModel.selectReferencePhoto(photo) }
+                                    .border(
+                                        width = if (isSel) 2.dp else 1.dp,
+                                        color = if (isSel) ArNeonGold else Color.Transparent,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
                             ) {
-                                AsyncImage(
-                                    model = photo.imageUri,
-                                    contentDescription = photo.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        AsyncImage(
+                                            model = photo.imageUri,
+                                            contentDescription = photo.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            photo.title.ifBlank { "Vista" },
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            photo.angle,
+                                            fontSize = 10.sp,
+                                            color = if (isSel) Color.White.copy(alpha = 0.8f) else Color.LightGray
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
                             }
                         }
                     }
 
-                    // Sliders & Controls
+                    // Transparency Slider (Opacidad)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -319,10 +400,10 @@ fun LightboxScreen(
                         Icon(Icons.Default.Opacity, contentDescription = null, tint = ArNeonGold)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Opacidad ${(opacity * 100).toInt()}%",
+                            "Transparencia: ${(opacity * 100).toInt()}%",
                             fontSize = 12.sp,
                             color = Color.White,
-                            modifier = Modifier.width(90.dp)
+                            modifier = Modifier.width(130.dp)
                         )
                         Slider(
                             value = opacity,
@@ -332,28 +413,35 @@ fun LightboxScreen(
                         )
                     }
 
-                    // Grid Selector Row
+                    // 3D Geometric Overlay Toggle Bar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.GridOn, contentDescription = null, tint = ArNeonCyan)
+                            Icon(Icons.Default.ViewInAr, contentDescription = null, tint = ArNeonCyan)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Guía Grid", fontSize = 12.sp, color = Color.White)
+                            Text("Guía 3D Geométrica Overlay", fontSize = 12.sp, color = Color.White)
                         }
+                        Switch(
+                            checked = enable3DGuideOverlay,
+                            onCheckedChange = { enable3DGuideOverlay = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = ArNeonCyan)
+                        )
+                    }
 
+                    if (enable3DGuideOverlay) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(GridType.entries.toTypedArray()) { g ->
-                                val isSel = g == gridType
+                            items(Guide3DType.entries.toTypedArray()) { guide ->
+                                val isSel = guide == guide3DType
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSel) ArNeonCyan else StudioDarkCard,
-                                    modifier = Modifier.clickable { gridType = g }
+                                    modifier = Modifier.clickable { guide3DType = guide }
                                 ) {
                                     Text(
-                                        g.title.take(8),
+                                        guide.displayName,
                                         fontSize = 11.sp,
                                         color = if (isSel) Color.Black else Color.LightGray,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -370,8 +458,7 @@ fun LightboxScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Modo Calco (Trazo Contorno)", fontSize = 13.sp, color = Color.White)
-                            Text("Filtro de alto contraste para calcar formas", fontSize = 10.sp, color = Color.Gray)
+                            Text("Modo Calco (Filtro de Contornos)", fontSize = 12.sp, color = Color.White)
                         }
                         Switch(
                             checked = isTraceMode,
@@ -380,55 +467,131 @@ fun LightboxScreen(
                         )
                     }
 
-                    if (isTraceMode) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Umbral de trazo", fontSize = 11.sp, color = Color.LightGray, modifier = Modifier.width(90.dp))
-                            Slider(
-                                value = traceThreshold,
-                                onValueChange = { traceThreshold = it },
-                                valueRange = 0.1f..0.9f,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    // Transform Actions Row (Flip, Reset, Capture)
+                    // Transform Actions & REAL CAPTURE BUTTON
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { flipHorizontal = !flipHorizontal }) {
-                            Icon(Icons.Default.Flip, contentDescription = "Voltear", tint = Color.White)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            IconButton(
+                                onClick = { flipHorizontal = !flipHorizontal },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Flip, contentDescription = "Voltear", tint = Color.White)
+                            }
+                            Button(
+                                onClick = {
+                                    scale = 1f
+                                    rotation = 0f
+                                    flipHorizontal = false
+                                    opacity = 0.55f
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = StudioDarkCard),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Text("Restablecer", fontSize = 11.sp)
+                            }
                         }
+
+                        // REAL PHOTO CAPTURE BUTTON
                         Button(
                             onClick = {
-                                scale = 1f
-                                rotation = 0f
-                                flipHorizontal = false
-                                opacity = 0.5f
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = StudioDarkCard)
-                        ) {
-                            Text("Restablecer", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "📷 Captura de mesa de luz guardada en el proyecto", Toast.LENGTH_SHORT).show()
-                                viewModel.addTimelapseSnapshot("sample_lightbox_capture_${System.currentTimeMillis()}")
+                                takeCameraPhoto(
+                                    context = context,
+                                    imageCapture = activeImageCapture,
+                                    onPhotoCaptured = { savedUri ->
+                                        val activeViewLabel = selectedPhoto?.title ?: "Vista libre"
+                                        viewModel.addTimelapseSnapshot(savedUri.toString(), stageLabel = activeViewLabel)
+                                        Toast.makeText(context, "📸 Captura guardada en Galería de Avances", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
-                            modifier = Modifier.testTag("btn_capture_lightbox_snapshot")
+                            modifier = Modifier
+                                .height(42.dp)
+                                .testTag("btn_capture_lightbox_snapshot")
                         ) {
-                            Icon(Icons.Default.CameraAlt, contentDescription = null)
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Capturar Avance")
+                            Text("Capturar Avance", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }
             }
         }
+    }
+
+    // Reference View Naming Dialog (Frente, Lado, Atrás, Figura vs Plano)
+    if (showNameDialog && pendingUri != null) {
+        val presetViews = listOf("Frente", "Lado Izquierdo", "Lado Derecho", "Atrás", "Vista Superior", "Detalle")
+
+        AlertDialog(
+            onDismissRequest = {
+                showNameDialog = false
+                pendingUri = null
+            },
+            containerColor = StudioDarkSurface,
+            title = {
+                Text("Etiquetar Vista de Referencia", color = Color.White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Selecciona la vista (Frente, Lado, Atrás) o escribe un nombre para el artista:",
+                        fontSize = 12.sp,
+                        color = Color.LightGray
+                    )
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(presetViews) { viewLabel ->
+                            val isSel = viewLabel == customViewName
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSel) TerracottaPrimary else StudioDarkCard,
+                                modifier = Modifier.clickable { customViewName = viewLabel }
+                            ) {
+                                Text(
+                                    viewLabel,
+                                    fontSize = 12.sp,
+                                    color = if (isSel) Color.White else Color.LightGray,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = customViewName,
+                        onValueChange = { customViewName = it },
+                        label = { Text("Nombre Personalizado") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingUri?.let { uri ->
+                            viewModel.addReferencePhoto(uri, viewName = customViewName, angle = customViewName)
+                            Toast.makeText(context, "Vista '$customViewName' agregada", Toast.LENGTH_SHORT).show()
+                        }
+                        showNameDialog = false
+                        pendingUri = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary)
+                ) {
+                    Text("Guardar Referencia")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showNameDialog = false
+                    pendingUri = null
+                }) {
+                    Text("Cancelar", color = Color.Gray)
+                }
+            }
+        )
     }
 }

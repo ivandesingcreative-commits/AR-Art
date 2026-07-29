@@ -19,7 +19,6 @@ import com.example.ui.screens.CloudSyncScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LightboxScreen
 import com.example.ui.screens.ProjectDetailScreen
-import com.example.ui.screens.SlowMoInspectScreen
 import com.example.ui.screens.TimelapseScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.StudioDarkBg
@@ -58,7 +57,6 @@ fun ClayStudioAppNavHost(viewModel: ProjectViewModel) {
                 viewModel = viewModel,
                 onNavigateToLightbox = { navController.navigate("lightbox") },
                 onNavigateToAr = { navController.navigate("ar") },
-                onNavigateToSlowMo = { navController.navigate("slowmo") },
                 onNavigateToTimelapse = { navController.navigate("timelapse") },
                 onNavigateToProjectDetail = { id -> navController.navigate("project_detail/$id") },
                 onNavigateToCloudSync = { navController.navigate("cloud_sync") }
@@ -74,13 +72,6 @@ fun ClayStudioAppNavHost(viewModel: ProjectViewModel) {
 
         composable("ar") {
             ArSculptScreen(
-                viewModel = viewModel,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable("slowmo") {
-            SlowMoInspectScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )

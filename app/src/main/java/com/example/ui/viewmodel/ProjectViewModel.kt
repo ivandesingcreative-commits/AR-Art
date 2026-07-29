@@ -101,6 +101,33 @@ class ProjectViewModel(application: Application) : AndroidViewModel(application)
         _selectedProjectId.value = projectId
     }
 
+    fun ensureDefaultProject(onReady: (Long) -> Unit) {
+        val currentId = _selectedProjectId.value
+        if (currentId != null) {
+            onReady(currentId)
+            return
+        }
+        viewModelScope.launch {
+            val list = projects.value
+            if (list.isNotEmpty()) {
+                val existingId = list.first().id
+                _selectedProjectId.value = existingId
+                onReady(existingId)
+            } else {
+                val defaultProject = ProjectEntity(
+                    title = "Estudio Libre",
+                    category = "Escultura de Arcilla",
+                    projectType = "FIGURA",
+                    clayThicknessMm = 15f,
+                    notes = "Sesión rápida de mesa de luz y referencias"
+                )
+                val newId = repository.saveProject(defaultProject)
+                _selectedProjectId.value = newId
+                onReady(newId)
+            }
+        }
+    }
+
     fun selectReferencePhoto(photo: ReferencePhotoEntity?) {
         _selectedReferencePhoto.value = photo
         photo?.let {
@@ -114,15 +141,16 @@ class ProjectViewModel(application: Application) : AndroidViewModel(application)
     fun createProject(
         title: String,
         category: String,
+        projectType: String = "FIGURA",
         clayThicknessMm: Float,
         notes: String
     ) {
         viewModelScope.launch {
-            // Air dry clay takes approx 24h per 10mm thickness
             val dryingHours = ((clayThicknessMm / 10f) * 24f).coerceIn(12f, 96f).toInt()
             val newProject = ProjectEntity(
                 title = title.ifBlank { "Proyecto de Arcilla" },
                 category = category,
+                projectType = projectType,
                 clayThicknessMm = clayThicknessMm,
                 notes = notes,
                 dryingHoursNeeded = dryingHours
@@ -132,29 +160,46 @@ class ProjectViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun addReferencePhoto(uri: Uri, angle: String = "FRONTAL") {
-        val id = _selectedProjectId.value ?: return
-        viewModelScope.launch {
-            val photo = ReferencePhotoEntity(
-                projectId = id,
-                imageUri = uri.toString(),
-                angle = angle,
-                defaultOpacity = overlayOpacity.value
-            )
-            repository.addReferencePhoto(photo)
+    fun addReferencePhoto(uri: Uri, viewName: String = "Frente", angle: String = "FRONTAL") {
+        ensureDefaultProject { projId ->
+            viewModelScope.launch {
+                val photo = ReferencePhotoEntity(
+                    projectId = projId,
+                    imageUri = uri.toString(),
+                    title = viewName,
+                    angle = angle,
+                    defaultOpacity = overlayOpacity.value
+                )
+                val newPhotoId = repository.addReferencePhoto(photo)
+                val createdPhoto = photo.copy(id = newPhotoId)
+                _selectedReferencePhoto.value = createdPhoto
+            }
         }
     }
 
-    fun addReferencePhotoUriString(uriString: String, angle: String = "FRONTAL") {
-        val id = _selectedProjectId.value ?: return
+    fun addReferencePhotoUriString(uriString: String, viewName: String = "Frente", angle: String = "FRONTAL") {
+        ensureDefaultProject { projId ->
+            viewModelScope.launch {
+                val photo = ReferencePhotoEntity(
+                    projectId = projId,
+                    imageUri = uriString,
+                    title = viewName,
+                    angle = angle,
+                    defaultOpacity = overlayOpacity.value
+                )
+                val newPhotoId = repository.addReferencePhoto(photo)
+                val createdPhoto = photo.copy(id = newPhotoId)
+                _selectedReferencePhoto.value = createdPhoto
+            }
+        }
+    }
+
+    fun deleteReferencePhoto(photo: ReferencePhotoEntity) {
         viewModelScope.launch {
-            val photo = ReferencePhotoEntity(
-                projectId = id,
-                imageUri = uriString,
-                angle = angle,
-                defaultOpacity = overlayOpacity.value
-            )
-            repository.addReferencePhoto(photo)
+            repository.deleteReferencePhoto(photo)
+            if (_selectedReferencePhoto.value?.id == photo.id) {
+                _selectedReferencePhoto.value = null
+            }
         }
     }
 
@@ -168,16 +213,24 @@ class ProjectViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun addTimelapseSnapshot(imageUri: String) {
-        val id = _selectedProjectId.value ?: return
-        viewModelScope.launch {
-            repository.addTimelapseFrame(
-                TimelapseFrameEntity(
-                    projectId = id,
-                    imageUri = imageUri,
-                    timestamp = System.currentTimeMillis()
+    fun addTimelapseSnapshot(imageUri: String, stageLabel: String = "Avance de escultura") {
+        ensureDefaultProject { projId ->
+            viewModelScope.launch {
+                repository.addTimelapseFrame(
+                    TimelapseFrameEntity(
+                        projectId = projId,
+                        imageUri = imageUri,
+                        timestamp = System.currentTimeMillis(),
+                        stageLabel = stageLabel
+                    )
                 )
-            )
+            }
+        }
+    }
+
+    fun deleteTimelapseFrame(frame: TimelapseFrameEntity) {
+        viewModelScope.launch {
+            repository.deleteTimelapseFrame(frame)
         }
     }
 
